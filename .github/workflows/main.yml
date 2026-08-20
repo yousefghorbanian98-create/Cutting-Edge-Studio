@@ -1,0 +1,50 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: |
+          curl -L -o ffmpeg.7z "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z"
+          7z x ffmpeg.7z -offmpeg_build > nul
+          mkdir build\ffmpeg
+          copy ffmpeg_build\*\bin\ffmpeg.exe build\ffmpeg\
+          copy ffmpeg_build\*\bin\ffprobe.exe build\ffmpeg\
+      - run: |
+          python -m venv build\backend\python
+          build\backend\python\Scripts\pip install -r backend\requirements.txt -q
+          xcopy /E /I backend\app build\backend\app
+          xcopy /E /I backend\core build\backend\core
+          xcopy /E /I backend\uploaders build\backend\uploaders
+          copy backend\run_backend.py build\backend\
+      - run: |
+          cd frontend
+          npm install
+          npm run build
+        env:
+          CI: false
+      - run: |
+          cd frontend
+          npx electron-builder --win nsis
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cutting-Edge-Windows-Setup
+          path: frontend\release\*.exe
